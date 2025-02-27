@@ -18,7 +18,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: executable-linux
           path: target/debug/game-installer
@@ -33,7 +33,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: executable-windows
           path: target/debug/game-installer.exe
