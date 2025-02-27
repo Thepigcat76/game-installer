@@ -1,37 +1,61 @@
-use std::{fs::File, io::{self, BufWriter}, path::Path, process::Command};
+use std::{
+    env, fs::{self, File}, io, path::Path
+};
 
+use anyhow::Context;
 use reqwest::blocking::Client;
-use walkdir::WalkDir;
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+use zip::ZipArchive;
 
 fn main() -> anyhow::Result<()> {
-    download_python("https://www.python.org/ftp/python/3.11.4/python-3.11.4-amd64.exe", "python_installer.exe")?;
-    install_python("python_installer.exe")
-}
+    let args = env::args().collect::<Vec<String>>();
 
-fn install_python<P: AsRef<Path>>(installer_path: P) -> anyhow::Result<()> {
-    let status = Command::new(installer_path.as_ref())
-        .arg("/quiet")  // Silent installation (Windows)
-        .arg("PrependPath=1")  // Add Python to PATH
-        .status()?;
-
-    if status.success() {
-        println!("Python installed successfully!");
-    } else {
-        eprintln!("Python installation failed.");
+    download_release(
+        &format!("https://github.com/Thepigcat76/reference/releases/download/v{}/game.zip", args.get(1).map(String::as_str).unwrap_or("1.0.0")),
+        "game.zip",
+    )?;
+    let dir = home::home_dir().context("Failed to find home directory")?;
+    let path = dir.join("game");
+    if !path.exists() {
+        fs::create_dir(&path)?;
     }
+    let to = path.join("game.zip");
+
+    empty_dir(&path)?;
+
+    fs::rename("game.zip", &to)?;
+
+    let file = File::open(&to)?;
+    let mut archive = ZipArchive::new(file)?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = path.join(file.name());
+
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut outfile = File::create(&outpath)?;
+            std::io::copy(&mut file, &mut outfile)?;
+        }
+    }
+
+    fs::remove_file(to)?;
 
     Ok(())
 }
 
-fn download_python<P: AsRef<Path>>(url: &str, output_path: P) -> anyhow::Result<()> {
-    let client = Client::new();
-    let mut response = client.get(url).send()?.error_for_status()?;
+fn empty_dir<P: AsRef<Path>>(path: P) -> anyhow::Result<()> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
 
-    let mut file = File::create(&output_path)?;
-    io::copy(&mut response, &mut file)?;
-
-    println!("Downloaded Python installer to {:?}", output_path.as_ref());
+        if path.is_file() {
+            fs::remove_file(&path)?;
+        }
+    }
     Ok(())
 }
 
@@ -41,32 +65,5 @@ fn download_release<P: AsRef<Path>>(url: &str, path: P) -> anyhow::Result<()> {
 
     let mut file = File::create(path)?;
     io::copy(&mut response, &mut file)?;
-    Ok(())
-}
-
-fn zip_directory<P: AsRef<Path>>(src_dir: P, output_zip: P) -> anyhow::Result<()> {
-    let zip_file = File::create(output_zip)?;
-    let writer = BufWriter::new(zip_file);
-    let mut zip = ZipWriter::new(writer);
-
-    let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Deflated) // Use Deflate compression
-        .unix_permissions(0o755);
-
-    for entry in WalkDir::new(&src_dir) {
-        let entry = entry?;
-        let path = entry.path();
-        let name = path.strip_prefix(&src_dir)?.to_str().unwrap();
-
-        if path.is_dir() {
-            zip.add_directory(name.to_string(), options)?;
-        } else {
-            let mut file = File::open(path)?;
-            zip.start_file(name.to_string(), options)?;
-            std::io::copy(&mut file, &mut zip)?;
-        }
-    }
-
-    zip.finish()?; // Finalize the ZIP archive
     Ok(())
 }

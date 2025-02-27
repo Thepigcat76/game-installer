@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.96"
+home = "0.5.11"
 reqwest = {version = "0.12.12", features = ["blocking"]}
-walkdir = "2.5.0"
 zip = "2.2.3"
